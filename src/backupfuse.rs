@@ -14,6 +14,7 @@ use fuser::FileAttr;
 use rusqlite::{CachedStatement, Connection};
 
 const ENOENT: c_int = 2;
+const EIO: c_int = 5;
 const ENOTDIR: c_int = 20;
 const ENOSYS: c_int = 38;
 
@@ -180,7 +181,7 @@ impl fuser::Filesystem for BackupFS<'_> {
             .unwrap(&encdata.as_ref()[4..], &mut key)
             .unwrap();
 
-        let cbc_cache = CbcCache::new(key, &[0; 16], 0);
+        let mut cbc_cache = CbcCache::new(key, &[0; 16], 0);
 
         let size = dbg!(mbfile.size);
         println!("open {} {} {:?}", ino, size, &folder);
@@ -197,6 +198,10 @@ impl fuser::Filesystem for BackupFS<'_> {
         } else {
             size
         };
+
+        if !enc_reader::has_correct_pkcs5_padding(&f, &mut cbc_cache, filesize - 16) {
+            return reply.error(EIO);
+        }
 
         let handle = Box::into_raw(Box::new(OpenFile { size, f, cbc_cache }));
 

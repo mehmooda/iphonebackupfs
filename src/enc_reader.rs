@@ -1,3 +1,4 @@
+use core::num;
 use std::{fs::File, os::unix::fs::FileExt};
 
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
@@ -31,6 +32,25 @@ impl CbcCache {
     fn get_offset(&self) -> u64 {
         self.offset
     }
+}
+
+pub fn has_correct_pkcs5_padding(
+    file: &File,
+    cbc_cache: &mut CbcCache,
+    padding_offset: u64,
+) -> bool {
+    let mut bytes = [0u8; 16];
+
+    read_encrypted(file, cbc_cache, bytes.as_mut_ptr(), 16, padding_offset);
+
+    let num_padding_bytes = bytes[15];
+
+    if num_padding_bytes > 0x10 {
+        return false;
+    }
+    bytes[16 - num_padding_bytes as usize..]
+        .iter()
+        .all(|x| *x == num_padding_bytes)
 }
 
 pub fn read_encrypted(
