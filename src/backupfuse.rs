@@ -12,17 +12,25 @@ use aes::Aes256;
 use aes_kw::Kek;
 use fuser::FileAttr;
 use rusqlite::{CachedStatement, Connection};
+use sha1::Digest;
 
 const ENOENT: c_int = 2;
 const EIO: c_int = 5;
+const E2BIG: c_int = 7;
 const ENOTDIR: c_int = 20;
+const ERANGE: c_int = 34;
 const ENOSYS: c_int = 38;
-
+const ENODATA: c_int = 61;
 pub(crate) struct BackupFS<'db> {
     fs: crate::manifestdb::FS,
     con: &'db rusqlite::Connection,
     keys: BTreeMap<u32, Kek<Aes256>>,
     basepath: std::path::PathBuf,
+    options: Options,
+}
+
+struct Options {
+    verify_digests: bool,
 }
 
 impl<'con> BackupFS<'con> {
@@ -39,10 +47,13 @@ impl<'con> BackupFS<'con> {
             con,
             keys,
             basepath,
+            options: Options {
+                verify_digests: true,
+            },
         }
     }
 
-    fn get_statement(&self) -> CachedStatement {
+    fn get_statement(&self) -> CachedStatement<'_> {
         self.con
             .prepare_cached("SELECT file FROM Files WHERE fileID = ?")
             .unwrap()
@@ -111,7 +122,8 @@ impl<'con> BackupFS<'con> {
 }
 
 struct OpenFile {
-    size: u64,
+    encrypted_size: u64,
+    zero_size: u64,
     f: std::fs::File,
     cbc_cache: CbcCache,
 }
@@ -152,7 +164,13 @@ impl fuser::Filesystem for BackupFS<'_> {
 
     //    fn forget(&mut self, _req: &fuser::Request, _ino: u64, _nlookup: u64) {}
 
-    fn getattr(&mut self, _req: &fuser::Request, _ino: u64, reply: fuser::ReplyAttr) {
+    fn getattr(
+        &mut self,
+        _req: &fuser::Request,
+        _ino: u64,
+        _fh: Option<u64>,
+        reply: fuser::ReplyAttr,
+    ) {
         reply.attr(&Duration::from_secs(300), &self.file_attr(_ino as usize));
     }
 
@@ -186,7 +204,36 @@ impl fuser::Filesystem for BackupFS<'_> {
         let size = dbg!(mbfile.size);
         println!("open {} {} {:?}", ino, size, &folder);
 
-        let f = std::fs::File::open(folder).unwrap();
+        let Ok(mut f) = std::fs::File::open(&folder) else {
+            eprintln!("Can't open file: {}", folder.to_str().unwrap());
+            return reply.error(EIO);
+        };
+
+        'verify_digest: {
+            if self.options.verify_digests {
+                break 'verify_digest;
+            }
+            let Some(digest) = mbfile.digest else {
+                println!("No Digest Available");
+                break 'verify_digest;
+            };
+            let mut hasher = sha1::Sha1::new();
+            let Ok(_) = std::io::copy(&mut f, &mut hasher) else {
+                eprintln!("Can't digest file: {}", folder.to_str().unwrap());
+                return reply.error(EIO);
+            };
+            let hash = hasher.finalize();
+            if hash.as_slice() != digest.as_ref() {
+                eprintln!("Invalid digest file: {}", folder.to_str().unwrap());
+                eprintln!(
+                    "expected: {:?}, got: {:?}",
+                    &hash.as_slice(),
+                    digest.as_ref()
+                );
+                return reply.error(EIO);
+            }
+            std::io::Seek::seek(&mut f, std::io::SeekFrom::Start(0)).unwrap();
+        }
 
         let filesize = dbg!(f.metadata().unwrap().len());
         assert!(filesize % 16 == 0);
@@ -203,7 +250,12 @@ impl fuser::Filesystem for BackupFS<'_> {
             return reply.error(EIO);
         }
 
-        let handle = Box::into_raw(Box::new(OpenFile { size, f, cbc_cache }));
+        let handle = Box::into_raw(Box::new(OpenFile {
+            encrypted_size: size,
+            zero_size: mbfile.size,
+            f,
+            cbc_cache,
+        }));
 
         reply.opened(handle as u64, 0);
     }
@@ -223,29 +275,34 @@ impl fuser::Filesystem for BackupFS<'_> {
 
         let fh = unsafe { &mut *(fh as *mut OpenFile) };
 
-        if offset as u64 == fh.size {
+        if offset as u64 == fh.zero_size {
             return reply.data(&[]);
         }
 
-        if offset as u64 > fh.size {
+        if offset as u64 > fh.zero_size {
             return reply.error(ENOENT);
         }
 
-        let mut size = size as u64;
-
-        if offset as u64 + size as u64 > fh.size {
-            size = fh.size - offset as u64;
+        let mut decrypt_size = size as u64;
+        if offset as u64 + size as u64 > fh.encrypted_size {
+            decrypt_size = fh.encrypted_size.saturating_sub(offset as u64);
+        }
+        let mut zero_size = size as u64;
+        if offset as u64 + size as u64 > fh.zero_size {
+            zero_size = fh.zero_size - offset as u64;
         }
 
-        let mut buffer = vec![0; size as usize];
+        let mut buffer = vec![0; zero_size as usize];
 
-        enc_reader::read_encrypted(
-            &fh.f,
-            &mut fh.cbc_cache,
-            buffer.as_mut_ptr(),
-            buffer.len() as u64,
-            offset as u64,
-        );
+        if decrypt_size > 0 {
+            enc_reader::read_encrypted(
+                &fh.f,
+                &mut fh.cbc_cache,
+                buffer.as_mut_ptr(),
+                decrypt_size,
+                offset as u64,
+            );
+        }
 
         reply.data(&buffer)
     }
@@ -342,22 +399,86 @@ impl fuser::Filesystem for BackupFS<'_> {
     fn getxattr(
         &mut self,
         _req: &fuser::Request,
-        _ino: u64,
-        _name: &std::ffi::OsStr,
-        _size: u32,
+        ino: u64,
+        name: &std::ffi::OsStr,
+        size: u32,
         reply: fuser::ReplyXattr,
     ) {
-        reply.error(ENOSYS);
+        println!("getxattr {} {}", ino, name.to_str().unwrap());
+        let id = &self.fs.backing[ino as usize].id;
+
+        let mbfile = self.get_mbfile(id);
+
+        let Some(plist) = mbfile.extended_attributes else {
+            return reply.size(0);
+        };
+
+        let Some(dict) = plist.0.as_dictionary() else {
+            return reply.error(EIO);
+        };
+
+        let Some(value) = dict.get(name.to_str().unwrap()) else {
+            return reply.error(ENODATA);
+        };
+
+        let Some(data) = value.as_data() else {
+            return reply.error(EIO);
+        };
+
+        if size == 0 {
+            return reply.size(data.len() as u32);
+        }
+
+        if data.len() > size as usize {
+            return reply.error(ERANGE);
+        };
+
+        reply.data(data);
     }
 
-    fn listxattr(
-        &mut self,
-        _req: &fuser::Request,
-        _ino: u64,
-        _size: u32,
-        reply: fuser::ReplyXattr,
-    ) {
-        reply.error(ENOSYS);
+    fn listxattr(&mut self, _req: &fuser::Request, ino: u64, size: u32, reply: fuser::ReplyXattr) {
+        println!("listxattr {} {}", ino, size);
+
+        if ino < 1 {
+            return reply.size(0);
+        }
+
+        let id = &self.fs.backing[ino as usize].id;
+
+        let mbfile = self.get_mbfile(id);
+
+        let Some(plist) = mbfile.extended_attributes else {
+            return reply.size(0);
+        };
+
+        let Some(dict) = plist.0.as_dictionary() else {
+            return reply.error(EIO);
+        };
+
+        let reply_size = dict
+            .keys()
+            .fold(0u32, |acc, key| acc.saturating_add(key.len() as u32 + 1));
+
+        if reply_size == u32::MAX {
+            return reply.error(E2BIG);
+        }
+
+        if size == 0 {
+            return reply.size(reply_size);
+        }
+
+        if reply_size > size {
+            return reply.error(ERANGE);
+        }
+
+        let mut replydata = Vec::with_capacity(reply_size as usize);
+
+        for key in dict.keys() {
+            replydata.extend_from_slice(key.as_bytes());
+            replydata.push(0);
+        }
+
+        reply.data(dbg!(&replydata));
     }
 
     fn access(&mut self, _req: &fuser::Request, _ino: u64, _mask: i32, reply: fuser::ReplyEmpty) {

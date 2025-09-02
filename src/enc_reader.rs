@@ -1,4 +1,3 @@
-use core::num;
 use std::{fs::File, os::unix::fs::FileExt};
 
 use aes::cipher::{BlockDecryptMut, KeyIvInit};

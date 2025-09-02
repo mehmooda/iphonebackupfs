@@ -1,4 +1,7 @@
-use serde::Deserialize;
+use std::str::from_utf8;
+
+use nom::{bytes, number, sequence, Parser};
+use serde::{de::Error, Deserialize};
 
 #[allow(dead_code)]
 #[derive(Debug, serde::Deserialize)]
@@ -18,13 +21,19 @@ pub(crate) struct Manifest {
 
 #[derive(Debug)]
 pub struct KeyBag {
+    #[allow(dead_code)]
     pub vers: u32,
+    #[allow(dead_code)]
     pub ktype: u32,
+    #[allow(dead_code)]
     pub uuid: [u8; 16],
+    #[allow(dead_code)]
     pub hmck: Vec<u8>,
+    #[allow(dead_code)]
     pub wrap: u32,
     pub salt: Vec<u8>,
     pub iter: u32,
+    #[allow(dead_code)]
     pub dpwt: u32,
     pub dpic: u32,
     pub dpsl: Vec<u8>,
@@ -33,9 +42,11 @@ pub struct KeyBag {
 
 #[derive(Debug)]
 pub struct KeyBagClass {
+    #[allow(dead_code)]
     pub uuid: [u8; 16],
     pub clas: u32,
     pub wrap: u32,
+    #[allow(dead_code)]
     pub ktyp: u32,
     pub wpky: Vec<u8>,
 }
@@ -61,72 +72,72 @@ where
     let dpwt;
     let dpic;
     let dpsl;
-    let n = read_4tlv(input).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "VERS" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(input).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "VERS" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing VERS",
         ));
     }
     vers = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "TYPE" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "TYPE" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing TYPE",
         ));
     }
     ktype = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "UUID" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "UUID" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing UUID",
         ));
     }
     uuid = n.1 .1.try_into().unwrap();
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "HMCK" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "HMCK" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing HMCK",
         ));
     }
     hmck = n.1 .1.try_into().unwrap();
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "WRAP" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "WRAP" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing WRAP",
         ));
     }
     wrap = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "SALT" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "SALT" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing SALT",
         ));
     }
     salt = n.1 .1.try_into().unwrap();
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "ITER" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "ITER" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing ITER",
         ));
     }
     iter = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "DPWT" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "DPWT" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing DPWT",
         ));
     }
     dpwt = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "DPIC" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "DPIC" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing DPIC",
         ));
     }
     dpic = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-    let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-    if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "DPSL" {
-        return Err(<D::Error as serde::de::Error>::custom(
+    let n = read_4tlv(n.0).map_err(Error::custom)?;
+    if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "DPSL" {
+        return Err(<D::Error as Error>::custom(
             "Unable to deserialize keybag: missing DPSL",
         ));
     }
@@ -139,37 +150,37 @@ where
         let wrap;
         let ktyp;
         let wpky;
-        let n = read_4tlv(input).map_err(serde::de::Error::custom)?;
-        if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "UUID" {
-            return Err(<D::Error as serde::de::Error>::custom(
+        let n = read_4tlv(input).map_err(Error::custom)?;
+        if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "UUID" {
+            return Err(<D::Error as Error>::custom(
                 "Unable to deserialize keybag: missing UUID",
             ));
         }
         uuid = n.1 .1.try_into().unwrap();
-        let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-        if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "CLAS" {
-            return Err(<D::Error as serde::de::Error>::custom(
+        let n = read_4tlv(n.0).map_err(Error::custom)?;
+        if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "CLAS" {
+            return Err(<D::Error as Error>::custom(
                 "Unable to deserialize keybag: missing CLAS",
             ));
         }
         clas = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-        let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-        if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "WRAP" {
-            return Err(<D::Error as serde::de::Error>::custom(
+        let n = read_4tlv(n.0).map_err(Error::custom)?;
+        if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "WRAP" {
+            return Err(<D::Error as Error>::custom(
                 "Unable to deserialize keybag: missing WRAP",
             ));
         }
         wrap = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-        let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-        if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "KTYP" {
-            return Err(<D::Error as serde::de::Error>::custom(
+        let n = read_4tlv(n.0).map_err(Error::custom)?;
+        if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "KTYP" {
+            return Err(<D::Error as Error>::custom(
                 "Unable to deserialize keybag: missing KTYP",
             ));
         }
         ktyp = u32::from_be_bytes(n.1 .1.try_into().unwrap());
-        let n = read_4tlv(n.0).map_err(serde::de::Error::custom)?;
-        if std::str::from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "WPKY" {
-            return Err(<D::Error as serde::de::Error>::custom(
+        let n = read_4tlv(n.0).map_err(Error::custom)?;
+        if from_utf8(&n.1 .0.to_be_bytes()[..]).unwrap() != "WPKY" {
+            return Err(<D::Error as Error>::custom(
                 "Unable to deserialize keybag: missing WPKY",
             ));
         }
@@ -206,8 +217,8 @@ where
 
 fn read_4tlv(input: &[u8]) -> nom::IResult<&[u8], (u32, &[u8])> {
     let out =
-        nom::sequence::pair(nom::number::complete::be_u32, nom::number::complete::be_u32)(input)?;
-    let out2 = nom::bytes::complete::take(out.1 .1)(out.0)?;
+        sequence::pair(number::complete::be_u32, number::complete::be_u32).parse_complete(input)?;
+    let out2 = bytes::complete::take(out.1 .1)(out.0)?;
 
     Ok((out2.0, (out.1 .0, out2.1)))
 }

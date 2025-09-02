@@ -33,9 +33,11 @@ pub struct MBFile {
     #[serde(deserialize_with = "use_nska_objects", default)]
     pub extended_attributes: Option<NestedPlist>,
     pub group_i_d: i64,
+    #[allow(dead_code)]
     #[serde(deserialize_with = "use_nska_objects", default)]
     pub target: Option<String>,
     pub last_status_change: u64,
+    #[allow(dead_code)]
     #[serde(deserialize_with = "use_nska_objects")]
     pub relative_path: String,
     pub birth: u64,
@@ -44,9 +46,12 @@ pub struct MBFile {
     pub size: u64,
     #[serde(deserialize_with = "use_nska_objects", default)]
     pub digest: Option<plist::Data>,
+    #[allow(dead_code)]
     pub inode_number: u64,
+    #[allow(dead_code)]
     pub mode: u64,
     pub user_i_d: i64,
+    #[allow(dead_code)]
     pub protection_class: u64,
     #[serde(rename = "$class")]
     _skipped: serde::de::IgnoredAny,
@@ -197,16 +202,8 @@ impl<'de, T: serde::de::DeserializeOwned> serde::Deserialize<'de> for NSKeyedArc
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(untagged)]
-
-enum MaybeNestedPlist {
-    Nested(NestedPlist),
-    Other(plist::Value),
-}
-
 #[derive(Debug)]
-pub struct NestedPlist(plist::Value);
+pub struct NestedPlist(pub plist::Value);
 
 use serde::{de::Error, Deserialize};
 

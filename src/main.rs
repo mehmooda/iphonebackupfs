@@ -44,10 +44,7 @@ fn main() {
         })
         .unwrap();
 
-        //        if x.0.0.Size mismatch
-
-        if ftype == 4 {
-        } else {
+        if ftype != 4 {
             fs.insert_file(domain, path, id, ftype.into());
         }
     }
